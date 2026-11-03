@@ -1,0 +1,20 @@
+{
+  "name": "network-switch-editor",
+  "version": "1.0.0",
+  "description": "Network Switch Configurator Softapp on APK.audio",
+  "type": "module",
+  "scripts": {
+    "test": "node --test tests/*.test.mjs"
+  },
+  "keywords": [
+    "network",
+    "switch",
+    "vlan",
+    "poe",
+    "dante",
+    "aes67",
+    "lag"
+  ],
+  "author": "Anthony Kuzub",
+  "license": "MIT"
+}
