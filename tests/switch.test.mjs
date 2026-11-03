@@ -1,31 +1,28 @@
+// Part of the APK.audio project — http://APK.audio — made by Anthony Kuzub
+// MIT Licence. Free, for everyone, for ever. Full text in LICENSE at the root.
+
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { SwitchModel } from '../js/switchApp.js';
 
-test('SwitchModel initializes ports, sets VLANs and computes PoE budget', () => {
-  const sw = new SwitchModel(24);
+import { SwitchModel, AV_PROFILES } from '../js/switchModel.js';
+
+test('Switch Model Port Generation and PoE Calculation', () => {
+  const sw = new SwitchModel(24, 370);
   assert.equal(sw.ports.length, 24);
 
-  // Check port 1 initial state
-  const p1 = sw.ports[0];
-  assert.equal(p1.id, 1);
-  assert.equal(p1.vlan, 10);
-  assert.equal(p1.poe, true);
+  const draw = sw.getTotalPoeDraw();
+  assert.ok(draw > 0);
+  assert.ok(draw <= 370);
 
-  // Set VLAN
-  sw.setPortVlan(1, 100);
-  assert.equal(sw.ports[0].vlan, 100);
+  const dantePort = sw.ports.find(p => p.profile === 'dante');
+  assert.ok(dantePort);
+  assert.equal(dantePort.vlan, 10);
+});
 
-  // Set Profile
-  sw.setPortProfile(1, 'Video NDI');
-  assert.equal(sw.ports[0].profile, 'Video NDI');
-
-  // Total PoE budget
-  const initialBudget = sw.getTotalPoeBudget();
-  assert.ok(initialBudget > 0);
-
-  // Toggle PoE off
-  sw.togglePoe(1);
-  assert.equal(sw.ports[0].poe, false);
-  assert.ok(sw.getTotalPoeBudget() < initialBudget);
+test('AV Profiles Catalog', () => {
+  assert.ok(AV_PROFILES.length >= 5);
+  const qlan = AV_PROFILES.find(p => p.id === 'qlan');
+  assert.ok(qlan);
+  assert.equal(qlan.vlan, 20);
+  assert.equal(qlan.dscp, 46);
 });

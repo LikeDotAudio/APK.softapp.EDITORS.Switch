@@ -3,132 +3,254 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Network Switch Configurator — APK.audio</title>
-  <link rel="stylesheet" href="css/style.css">
+  <title>Network Switch Configurator · Standalone Block Editor</title>
+  <link rel="stylesheet" href="./css/theme.css">
+  <style>
+    .switch-container {
+      display: grid;
+      grid-template-rows: auto auto 1fr;
+      height: calc(100vh - 40px);
+      overflow: hidden;
+    }
+
+    .switch-header-bar {
+      background: var(--osc-bg-surface);
+      border-bottom: 1px solid var(--osc-border-default);
+      padding: 10px 14px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+    }
+
+    .form-group-inline {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .form-group-inline label {
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--osc-text-muted);
+      text-transform: uppercase;
+    }
+
+    .poe-telemetry-box {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      background: var(--osc-bg-input);
+      border: 1px solid var(--osc-border-default);
+      border-radius: 4px;
+      padding: 6px 12px;
+    }
+
+    .poe-bar-container {
+      width: 140px;
+      height: 8px;
+      background: #080C16;
+      border-radius: 4px;
+      overflow: hidden;
+      border: 1px solid var(--osc-border-default);
+    }
+
+    .poe-bar-fill {
+      height: 100%;
+      width: 30%;
+      background: var(--osc-accent-secondary);
+      transition: width 0.3s ease;
+    }
+
+    .visual-switch-stage {
+      padding: 14px;
+      background: radial-gradient(circle at 50% 50%, #151F38 0%, #080C16 100%);
+      border-bottom: 1px solid var(--osc-border-default);
+      display: flex;
+      justify-content: center;
+    }
+
+    .switch-faceplate {
+      background: #0A0F1D;
+      border: 1px solid var(--osc-border-light);
+      border-radius: 4px;
+      padding: 10px 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.6);
+      max-width: 95vw;
+    }
+
+    .ports-visual-grid {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+
+    .data-grid-panel {
+      background: var(--osc-bg-surface);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    .data-grid-header {
+      height: 32px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 12px;
+      border-bottom: 1px solid var(--osc-border-default);
+      background: var(--osc-bg-surface-hover);
+    }
+
+    .data-table-container {
+      flex: 1;
+      overflow: auto;
+    }
+
+    table.switch-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 11px;
+    }
+
+    table.switch-table th {
+      position: sticky;
+      top: 0;
+      background: var(--osc-bg-input);
+      color: var(--osc-text-muted);
+      padding: 6px 8px;
+      text-align: left;
+      border-bottom: 1px solid var(--osc-border-default);
+      font-weight: 600;
+      z-index: 2;
+    }
+
+    table.switch-table td {
+      padding: 2px 4px;
+      border-bottom: 1px solid var(--osc-border-default);
+    }
+
+    .cell-input {
+      width: 100%;
+      background: transparent;
+      border: 1px solid transparent;
+      color: var(--osc-text-primary);
+      padding: 4px 6px;
+      font-size: 11px;
+      border-radius: 2px;
+      font-family: inherit;
+    }
+
+    .cell-input:focus {
+      background: var(--osc-bg-input);
+      border-color: var(--osc-accent-primary);
+      outline: none;
+    }
+
+    .text-center {
+      text-align: center;
+    }
+
+    .col-idx {
+      width: 45px;
+    }
+  </style>
 </head>
-<body>
-  <header>
-    <div class="brand">
-      <span>🖧</span>
-      <span>Network Switch Configurator</span>
-      <span style="font-size:0.75rem; background:#1e293b; color:#38bdf8; padding:2px 8px; border-radius:12px;">Managed AV Switch</span>
+<body class="theme-deep-horizon">
+  <header class="app-window-header">
+    <div class="window-title-group">
+      <span class="window-dot"></span>
+      <span class="window-title">Network Switch Configurator</span>
+      <span class="window-pill" id="block-tag">STANDALONE BLOCK EDITOR</span>
     </div>
-    <div>
-      <button class="primary" id="btn-export">Export Config</button>
+    <div class="window-actions">
+      <button class="btn btn-secondary" id="btn-sync-discovered" title="Load live switch from Discovered Project">
+        <span class="btn-icon">⚡</span> Discovered
+      </button>
+      <button class="btn btn-secondary" id="btn-open" title="Open block JSON">
+        <span class="btn-icon">📂</span> Open
+      </button>
+      <button class="btn btn-primary" id="btn-save" title="Save & Return modified block to caller">
+        <span class="btn-icon">💾</span> Save & Return
+      </button>
+      <button class="btn btn-icon" id="btn-close" title="Close Editor">✕</button>
     </div>
   </header>
 
-  <div class="main-view">
-    <div class="switch-chassis">
-      <div class="switch-bezel">
-        <div class="switch-info">
-          <div>
-            <div style="font-weight:700; font-size:1.1rem; color:#f1f5f9;">AV-CORE-SW01</div>
-            <div style="font-size:0.8rem; color:#64748b;">Enterprise 24-Port Gigabit AVB/Dante Switch</div>
-          </div>
-          <div style="text-align:right;">
-            <div style="font-size:0.8rem; color:#94a3b8;">PoE Power Draw: <span id="poe-total" style="color:#38bdf8; font-weight:700;">184.8 W / 370 W</span></div>
-            <div style="font-size:0.75rem; color:#10b981;">● System Normal · LLDP Active</div>
-          </div>
+  <div class="switch-container">
+    <div class="switch-header-bar">
+      <div style="display:flex; align-items:center; gap:16px;">
+        <div class="form-group-inline">
+          <label for="input-switch-name">Switch Hostname:</label>
+          <input type="text" id="input-switch-name" class="input" style="width:160px;" value="CORE-SW01">
         </div>
 
-        <div class="ports-grid" id="ports-grid"></div>
-      </div>
-    </div>
-
-    <div class="side-panel">
-      <h3 style="font-size:0.85rem; text-transform:uppercase; color:#94a3b8; margin-bottom:16px;">Port Configuration</h3>
-      <div id="inspector">
-        <div style="color:#64748b; font-size:0.85rem;">Click a port to configure its profile, VLAN, and PoE parameters.</div>
-      </div>
-    </div>
-  </div>
-
-  <script type="module">
-    import { SwitchModel } from './js/switchApp.js';
-
-    const model = new SwitchModel(24);
-    const grid = document.getElementById('ports-grid');
-    const inspector = document.getElementById('inspector');
-    const poeTotal = document.getElementById('poe-total');
-    let selectedPort = null;
-
-    function renderGrid() {
-      grid.innerHTML = '';
-      model.ports.forEach(p => {
-        const slot = document.createElement('div');
-        slot.className = `port-slot ${p.link ? 'link-up' : ''} ${selectedPort?.id === p.id ? 'selected' : ''}`;
-        slot.innerHTML = `
-          <div class="port-led ${p.link ? 'active' : ''}"></div>
-          <div class="port-num">${p.id}</div>
-          <div class="port-vlan">V${p.vlan}</div>
-        `;
-        slot.addEventListener('click', () => {
-          selectedPort = p;
-          renderGrid();
-          renderInspector();
-        });
-        grid.appendChild(slot);
-      });
-      poeTotal.textContent = `${model.getTotalPoeBudget().toFixed(1)} W / 370 W`;
-    }
-
-    function renderInspector() {
-      if (!selectedPort) return;
-      inspector.innerHTML = `
-        <div class="prop-group">
-          <label>Port Interface</label>
-          <input type="text" value="${selectedPort.name}" disabled />
-        </div>
-        <div class="prop-group">
-          <label>AV Profile</label>
-          <select id="sel-profile">
-            <option value="Dante Audio" ${selectedPort.profile === 'Dante Audio' ? 'selected' : ''}>Dante Audio (QoS Expedited)</option>
-            <option value="AES67 Control" ${selectedPort.profile === 'AES67 Control' ? 'selected' : ''}>AES67 Control</option>
-            <option value="Video NDI" ${selectedPort.profile === 'Video NDI' ? 'selected' : ''}>Video NDI / SMPTE 2110</option>
-            <option value="Default Data" ${selectedPort.profile === 'Default Data' ? 'selected' : ''}>Default Data</option>
+        <div class="form-group-inline">
+          <label for="select-port-count">Port Density:</label>
+          <select id="select-port-count" class="input" style="width:130px;">
+            <option value="8">8 Ports + 2 SFP</option>
+            <option value="16">16 Ports + 2 SFP</option>
+            <option value="24" selected>24 Ports + 4 SFP</option>
+            <option value="48">48 Ports + 4 SFP</option>
           </select>
         </div>
-        <div class="prop-group">
-          <label>VLAN Tag (1 - 4094)</label>
-          <input type="number" id="inp-vlan" value="${selectedPort.vlan}" min="1" max="4094" />
+      </div>
+
+      <div class="poe-telemetry-box">
+        <div style="font-size:10px; font-weight:700; color:var(--osc-text-muted); text-transform:uppercase;">PoE Budget:</div>
+        <div class="poe-bar-container">
+          <div class="poe-bar-fill" id="poe-bar-fill"></div>
         </div>
-        <div class="prop-group">
-          <label>PoE Power (802.3at)</label>
-          <button id="btn-poe" style="width:100%; border-color:${selectedPort.poe ? '#34d399' : '#475569'}; color:${selectedPort.poe ? '#34d399' : '#94a3b8'};">
-            ${selectedPort.poe ? '✓ PoE Enabled (15.4W Allocated)' : '✕ PoE Disabled'}
-          </button>
+        <div style="font-size:11px; font-family:var(--font-mono); color:var(--osc-accent-primary); font-weight:bold;">
+          <span id="poe-draw">0 W</span> / <span id="poe-budget">370 W</span>
         </div>
-      `;
+        <div class="form-group-inline" style="margin-left:8px;">
+          <label for="input-poe-budget" style="font-size:9px;">Max W:</label>
+          <input type="number" id="input-poe-budget" class="input" style="width:70px; padding:2px 4px; font-size:10px;" value="370">
+        </div>
+      </div>
+    </div>
 
-      document.getElementById('sel-profile').addEventListener('change', (e) => {
-        model.setPortProfile(selectedPort.id, e.target.value);
-        renderGrid();
-      });
+    <div class="visual-switch-stage">
+      <div class="switch-faceplate">
+        <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid #1E2A45; padding-bottom:6px;">
+          <span style="font-size:11px; font-weight:bold; color:var(--osc-accent-primary);">MANAGED AV SWITCH FACEPLATE</span>
+          <span style="font-size:10px; color:var(--osc-text-muted);">EIA-310-D 1U 19" RACK FRAME</span>
+        </div>
+        <div class="ports-visual-grid" id="ports-visual-grid"></div>
+      </div>
+    </div>
 
-      document.getElementById('inp-vlan').addEventListener('change', (e) => {
-        model.setPortVlan(selectedPort.id, e.target.value);
-        renderGrid();
-      });
+    <section class="data-grid-panel">
+      <div class="data-grid-header">
+        <span style="font-size:11px; font-weight:600; text-transform:uppercase; color:var(--osc-text-muted);">
+          Port Configuration & QoS / VLAN Schedule (Live Editable)
+        </span>
+        <button class="btn btn-secondary btn-sm" onclick="window.print()">Print Config</button>
+      </div>
+      <div class="data-table-container">
+        <table class="switch-table">
+          <thead>
+            <tr>
+              <th class="col-idx text-center">Port #</th>
+              <th>Description / Label</th>
+              <th>AV Profile / QoS Preset</th>
+              <th style="width:70px;" class="text-center">VLAN</th>
+              <th style="width:100px;">Speed</th>
+              <th style="width:50px;" class="text-center">PoE</th>
+              <th style="width:75px;" class="text-center">PoE Watts</th>
+              <th>Connected Device / LLDP Neighbor</th>
+            </tr>
+          </thead>
+          <tbody id="switch-port-table-body"></tbody>
+        </table>
+      </div>
+    </section>
+  </div>
 
-      document.getElementById('btn-poe').addEventListener('click', () => {
-        model.togglePoe(selectedPort.id);
-        renderGrid();
-        renderInspector();
-      });
-    }
-
-    document.getElementById('btn-export').addEventListener('click', () => {
-      const blob = new Blob([JSON.stringify(model, null, 2)], { type: 'application/json' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = 'switch-config-AV-CORE-SW01.json';
-      a.click();
-      URL.revokeObjectURL(url);
-    });
-
-    renderGrid();
-  </script>
+  <script type="module" src="./js/switchApp.js"></script>
 </body>
 </html>
