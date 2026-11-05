@@ -1,0 +1,111 @@
+// Part of the APK.audio project — http://APK.audio — made by Anthony Kuzub
+// MIT Licence. Free, for everyone, for ever. Full text in LICENSE at the root.
+/* ROAD-3488: the switch block goes in and out over cad.like.audio/host@1
+   (vendor/apk-softapp), never '*', and a switch the bus discovered becomes a
+   block keyed on its MAC, with nothing made up. */
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import { world, hostContract, discovery, ORIGIN } from './softappWorld.mjs';
+import { SwitchModel } from '../js/switchModel.js';
+import { switchFromThing, field } from '../js/switchDiscovered.js';
+import { thingRow } from '../js/discoveredTable.js';
+
+const rules = JSON.parse(fs.readFileSync(new URL('../config/discovery.json', import.meta.url)));
+
+/* The app's own wiring (switchApp.js constructor), around the real model. */
+function editor(S) {
+  const model = new SwitchModel(8, 120);
+  const host = S.connectHost({
+    editor: 'Switch Configurator', blockType: 'network_switch', notice: false,
+    onLoad: (block) => model.fromBlock(block),
+    onRequest: () => ({ block: model.toBlock(), meta: { filename: 'switch_x' } }),
+  });
+  return { model, host };
+}
+
+test('block round trip: load from the CAD, edit, request answers blockSave with the edit, all at our origin', async () => {
+  const { S, toParent, fire } = world();
+  const { model } = editor(S);
+  const sent = new SwitchModel(4, 60);
+  sent.name = 'FOH-SW';
+  sent.ports[1].vlan = 42;
+  fire({ protocol: 'cad.like.audio/host@1', type: 'load', block: sent.toBlock(), meta: { blockName: 'FOH-SW' } });
+  assert.equal(model.name, 'FOH-SW');
+  assert.equal(model.ports.length, 4);
+  assert.equal(model.ports[1].vlan, 42);
+
+  model.ports[0].name = 'Stage box A';
+  fire({ protocol: 'cad.like.audio/host@1', type: 'request' });
+  const save = toParent.at(-1);
+  assert.equal(save.o, ORIGIN, 'never "*"');
+  assert.equal(save.m.type, 'blockSave');
+  assert.equal(save.m.blockType, 'network_switch');
+  assert.equal(save.m.block.ports[0].name, 'Stage box A');
+  assert.equal(save.m.block.ports[1].vlan, 42);
+  assert.equal(save.m.meta.blockName, 'FOH-SW', 'the CAD meta comes back');
+
+  const contract = await hostContract();
+  if (contract) {
+    for (const { m } of toParent) assert.deepEqual(contract.validateMessage(contract.schema, 'toCad', m), [], m.type);
+  }
+});
+
+test('a message from anywhere but the parent at our origin is ignored', () => {
+  const { S, fire } = world();
+  const { model } = editor(S);
+  fire({ protocol: 'cad.like.audio/host@1', type: 'load', block: { name: 'EVIL', ports: [] } }, { origin: 'http://elsewhere' });
+  fire({ type: 'APK_LOAD_BLOCK', block: { name: 'OLD' } });
+  assert.equal(model.name, 'CORE-SW01');
+});
+
+test('standalone, Save downloads the block once and says download', () => {
+  const { S, downloads, toParent } = world({ framed: false });
+  const { model, host } = editor(S);
+  assert.equal(host.embedded, false);
+  assert.equal(host.save(model.toBlock(), { filename: 'switch_core' }), 'download');
+  assert.equal(downloads.length, 1);
+  assert.equal(downloads[0].name, 'switch_core.json');
+  assert.equal(toParent.length, 0);
+});
+
+test('an SNMP switch on the bus becomes a block keyed on its MAC, ports plain, nothing invented', () => {
+  const { S, win } = world({ contracts: true });
+  if (!win.APKContracts) return;
+  const now = Date.parse('2026-11-04T12:00:00Z');
+  const { model: disc, roots } = discovery(S, win, now);
+  const dev = `${roots.protocols}/snmp/Device/d8_47_32_aa_bb_cc`;
+  disc.ingest(`${dev}/mac`, 'd8:47:32:aa:bb:cc');
+  disc.ingest(`${dev}/1_3_6_1_2_1_1_5_0`, 'AV-CORE-1');
+  disc.ingest(`${dev}/1_3_6_1_2_1_1_1_0`, 'TEG-240WS 24-port');
+  disc.ingest(`${dev}/1_3_6_1_2_1_2_1_0`, '26');
+  disc.ingest(`${dev}/ip`, '10.0.0.2');
+  const things = disc.things().filter((t) => rules.kinds.some((k) => t.kinds.some((x) => x.includes(k))));
+  assert.equal(things.length, 1);
+  const t = things[0];
+  assert.equal(field(t, rules.fields.name), 'AV-CORE-1');
+
+  const block = switchFromThing(t, rules);
+  assert.equal(block.id, 'sw_d8_47_32_aa_bb_cc', 'identity is the MAC, never the address');
+  assert.equal(block.name, 'AV-CORE-1');
+  assert.equal(block.portCount, 26);
+  assert.equal(block.discovered.description, 'TEG-240WS 24-port');
+
+  const m = new SwitchModel();
+  m.generateBlankPorts(block.portCount);
+  m.fromBlock({ ...block, ports: m.ports });
+  assert.equal(m.ports.length, 26);
+  assert.ok(m.ports.every((p) => !p.poeEnabled && p.neighbor === '' && p.profile === 'general'));
+  assert.deepEqual(m.toBlock().discovered.identity, 'd8:47:32:aa:bb:cc');
+
+  const row = thingRow(t);
+  assert.equal(row.identity, 'd8:47:32:aa:bb:cc');
+  assert.ok(['good', 'kinda', 'dead'].includes(row.state));
+  assert.ok(row.why);
+});
+
+test('no port count on the bus: the block says 0 and the editor keeps its ports', () => {
+  const block = switchFromThing({ id: 'serial:X1', serial: 'X1', name: 'sw', fields: {}, protocols: ['netgear'] }, rules);
+  assert.equal(block.portCount, 0);
+  assert.equal(block.id, 'sw_x1', 'the serial, when there is no MAC');
+});

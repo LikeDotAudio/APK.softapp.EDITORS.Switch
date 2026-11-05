@@ -1,0 +1,11 @@
+{
+  "_about": "What the Switch Configurator offers from the bus. Tunables only: no code holds a device list. `kinds` is matched (case-insensitive substring) against each discovered thing's protocols, scanner kind and device_class (APKSoftapp.discovered). `fields` names, in order of preference, the leaf a scanner publishes a value under; the SNMP bridge (PLUGIN.SNMP bridge.rs) publishes every OID as a level with '_' for '.', so MIB-II sysName.0 is 1_3_6_1_2_1_1_5_0. ifNumber counts every interface the agent has (VLAN and CPU interfaces too), so it is a ceiling on the front-panel ports, not a count of them.",
+  "kinds": ["snmp", "switch", "netgear", "trendnet"],
+  "fields": {
+    "name": ["1_3_6_1_2_1_1_5_0", "sysName", "hostname", "name"],
+    "description": ["1_3_6_1_2_1_1_1_0", "sysDescr", "description"],
+    "location": ["1_3_6_1_2_1_1_6_0", "sysLocation", "location"],
+    "portCount": ["ports", "port_count", "1_3_6_1_2_1_2_1_0", "ifNumber"]
+  },
+  "maxPorts": 96
+}

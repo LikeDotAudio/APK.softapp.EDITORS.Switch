@@ -45,6 +45,46 @@ export class SwitchModel {
     }
   }
 
+  /** Plain ports for a switch read off the network: no profile, PoE or neighbour is assumed. */
+  generateBlankPorts(count) {
+    this.ports = [];
+    for (let i = 1; i <= count; i++) {
+      this.ports.push({ id: i, name: `Port ${i}`, type: 'RJ45', profile: 'general', vlan: 1, link: false,
+        speed: 'Auto', poeEnabled: false, poeDrawW: 0, neighbor: '' });
+    }
+    this.portCount = count;
+  }
+
+  /** The block the CAD stores (toCad.blockSave). */
+  toBlock() {
+    const block = {
+      type: 'network_switch',
+      id: this.id,
+      name: this.name,
+      model: this.model,
+      portCount: this.portCount,
+      poeBudgetW: this.poeBudgetW,
+      totalPoeDrawW: this.getTotalPoeDraw(),
+      ports: JSON.parse(JSON.stringify(this.ports)),
+    };
+    if (this.discovered) block.discovered = { ...this.discovered };
+    return block;
+  }
+
+  /** Load a block (toEditor.load, a file, or a switch picked off the bus). */
+  fromBlock(block = {}) {
+    if (!block || typeof block !== 'object') return;
+    this.id = block.id || this.id;
+    this.name = block.name || this.name;
+    if (block.model) this.model = block.model;
+    this.poeBudgetW = block.poeBudgetW || this.poeBudgetW;
+    if (Array.isArray(block.ports) && block.ports.length > 0) {
+      this.ports = JSON.parse(JSON.stringify(block.ports));
+      this.portCount = block.ports.length;
+    }
+    this.discovered = block.discovered ? { ...block.discovered } : null;
+  }
+
   getTotalPoeDraw() {
     return Math.round(this.ports.reduce((sum, p) => sum + (p.poeEnabled ? p.poeDrawW : 0), 0) * 10) / 10;
   }

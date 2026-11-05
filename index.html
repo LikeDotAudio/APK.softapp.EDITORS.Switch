@@ -6,10 +6,12 @@
   <title>Network Switch Configurator · Standalone Block Editor</title>
   <link rel="stylesheet" href="./vendor/apk-contracts/apk-tokens.css">
   <link rel="stylesheet" href="./css/theme.css">
+  <!-- THE ONE TABLE (FrontEnd/shared/apk-table.*, vendored; check.sh webshared) -->
+  <link rel="stylesheet" href="./vendor/apk-table/apk-table.css">
   <style>
     .switch-container {
       display: grid;
-      grid-template-rows: auto auto 1fr;
+      grid-template-rows: auto auto auto 1fr;
       height: calc(100vh - 40px);
       overflow: hidden;
     }
@@ -158,6 +160,14 @@
     .col-idx {
       width: 45px;
     }
+
+    .apk-table-host { display: flex; min-height: 0; }
+    .net-panel { max-height: 30vh; overflow: auto; }
+    body.net-hidden .net-panel { display: none; }
+    #net-status { font-size: 11px; }
+    #net-status[data-apk-state="good"], .apk-live[data-apk-state="good"] { color: var(--apk-state-good, #4ADE80); }
+    #net-status[data-apk-state="kinda"], .apk-live[data-apk-state="kinda"] { color: var(--apk-state-kinda, #F4902C); }
+    #net-status[data-apk-state="dead"], .apk-live[data-apk-state="dead"] { color: var(--apk-state-dead, #EF4444); }
   </style>
 </head>
 <body class="theme-deep-horizon">
@@ -168,7 +178,7 @@
       <span class="window-pill" id="block-tag">STANDALONE BLOCK EDITOR</span>
     </div>
     <div class="window-actions">
-      <button class="btn btn-secondary" id="btn-sync-discovered" title="Load live switch from Discovered Project">
+      <button class="btn btn-secondary" id="btn-sync-discovered" title="Show / hide the switches on the network">
         <span class="btn-icon">⚡</span> Discovered
       </button>
       <button class="btn btn-secondary" id="btn-open" title="Open block JSON">
@@ -215,6 +225,16 @@
       </div>
     </div>
 
+    <section class="data-grid-panel net-panel" id="net-panel">
+      <div class="data-grid-header">
+        <span style="font-size:11px; font-weight:600; text-transform:uppercase; color:var(--osc-text-muted);">
+          Switches on the network (live from the bus)
+        </span>
+        <span id="net-status" data-apk-state="kinda">Starting…</span>
+      </div>
+      <div id="net-table" class="apk-table-host"></div>
+    </section>
+
     <div class="visual-switch-stage">
       <div class="switch-faceplate">
         <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid #2c2c2c; padding-bottom:6px;">
@@ -233,25 +253,18 @@
         <button class="btn btn-secondary btn-sm" onclick="window.print()">Print Config</button>
       </div>
       <div class="data-table-container">
-        <table class="switch-table">
-          <thead>
-            <tr>
-              <th class="col-idx text-center">Port #</th>
-              <th>Description / Label</th>
-              <th>AV Profile / QoS Preset</th>
-              <th style="width:70px;" class="text-center">VLAN</th>
-              <th style="width:100px;">Speed</th>
-              <th style="width:50px;" class="text-center">PoE</th>
-              <th style="width:75px;" class="text-center">PoE Watts</th>
-              <th>Connected Device / LLDP Neighbor</th>
-            </tr>
-          </thead>
-          <tbody id="switch-port-table-body"></tbody>
-        </table>
+        <div id="switch-port-table" class="apk-table-host"></div>
       </div>
     </section>
   </div>
 
+  <!-- SDK: the contract's browser bundle (window.APKContracts: topic builders, presence rule). -->
+  <script src="./vendor/apk-contracts/apk-contracts.global.js"></script>
+  <!-- API: the shell's one softapp bus helper (window.APKBus). Absent off the bench: the panel says so. -->
+  <script src="/FrontEnd/shared/apk-bus.js"></script>
+  <!-- The one softapp client: CAD host@1 bridge, discovered things, esc (window.APKSoftapp). -->
+  <script src="./vendor/apk-softapp/apk-softapp.js"></script>
+  <script src="./vendor/apk-table/apk-table.js"></script>
   <script type="module" src="./js/switchApp.js"></script>
 </body>
 </html>

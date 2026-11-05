@@ -1,24 +1,31 @@
 // Part of the APK.audio project — http://APK.audio — made by Anthony Kuzub
 // MIT Licence. Free, for everyone, for ever. Full text in LICENSE at the root.
 
-import { BlockBridge } from './blockBridge.js';
 import { SwitchModel, AV_PROFILES } from './switchModel.js';
+import { switchFromThing } from './switchDiscovered.js';
+import { mountDiscovered, loadRules } from './discoveredTable.js';
+
+const esc = (s) => window.APKSoftapp.esc(s);
+const SPEEDS = ['1G', '10G', '100M', 'Auto'];
 
 export class SwitchApp {
   constructor() {
     this.model = new SwitchModel(24, 370);
     this.selectedPortId = 1;
 
-    this.bridge = new BlockBridge({
-      name: 'Switch Configurator',
-      type: 'network_switch',
-      onBlockLoaded: (block, meta) => this.handleBlockLoaded(block, meta),
-      onBlockChanged: () => {},
+    /* The CAD link: cad.like.audio/host@1 through vendor/apk-softapp. Same
+       origin only; standalone, Save downloads the block as .json. */
+    this.host = window.APKSoftapp.connectHost({
+      editor: 'Switch Configurator',
+      blockType: 'network_switch',
+      onLoad: (block) => this.handleBlockLoaded(block),
+      onRequest: () => ({ block: this.model.toBlock(), meta: this.saveMeta() }),
     });
 
     this.initElements();
     this.attachEvents();
-    this.loadInitialData();
+    this.render();
+    this.startDiscovered();
   }
 
   initElements() {
@@ -36,18 +43,22 @@ export class SwitchApp {
     this.poeBarEl = document.getElementById('poe-bar-fill');
 
     this.portsGrid = document.getElementById('ports-visual-grid');
-    this.portTableBody = document.getElementById('switch-port-table-body');
+    this.portTableHost = document.getElementById('switch-port-table');
+  }
+
+  changed() {
+    this.host.changed(this.model.toBlock());
   }
 
   attachEvents() {
     this.btnOpen?.addEventListener('click', () => this.promptOpen());
     this.btnSave?.addEventListener('click', () => this.saveBlock());
-    this.btnClose?.addEventListener('click', () => this.bridge.close());
-    this.btnSyncDiscovered?.addEventListener('click', () => this.loadFromDiscoveredProject());
+    this.btnClose?.addEventListener('click', () => this.host.close());
+    this.btnSyncDiscovered?.addEventListener('click', () => document.body.classList.toggle('net-hidden'));
 
     this.inputSwitchName.addEventListener('input', (e) => {
       this.model.name = e.target.value;
-      this.bridge.notifyChanged();
+      this.changed();
     });
 
     this.selectPortCount.addEventListener('change', (e) => {
@@ -55,63 +66,62 @@ export class SwitchApp {
       this.model.portCount = count;
       this.model.generatePorts(count);
       this.render();
-      this.bridge.notifyChanged();
+      this.changed();
     });
 
     this.inputPoeBudget.addEventListener('input', (e) => {
       this.model.poeBudgetW = parseFloat(e.target.value) || 370;
       this.renderTelemetry();
-      this.bridge.notifyChanged();
+      this.changed();
     });
   }
 
-  loadInitialData() {
-    this.loadFromDiscoveredProject().catch(() => {
-      this.render();
-    });
-  }
-
-  async loadFromDiscoveredProject() {
+  /* The switches the bus already knows (SNMP bridge, vendor plugins): which
+     ones is config/discovery.json, never a list here. Load takes one in. */
+  async startDiscovered() {
+    const host = document.getElementById('net-table');
+    const status = document.getElementById('net-status');
+    if (!host) return;
+    let rules;
     try {
-      const data = await this.bridge.fetchDiscoveredProject();
-      if (data && (data.switches || data.networkSwitches)) {
-        const sws = data.switches || data.networkSwitches;
-        if (Array.isArray(sws) && sws.length > 0) {
-          this.handleBlockLoaded(sws[0], { title: sws[0].name });
-          return;
-        }
-      }
-    } catch (_) {}
+      rules = await loadRules(import.meta.url);
+    } catch (err) {
+      if (status) { status.setAttribute('data-apk-state', 'dead'); status.textContent = `Could not read config/discovery.json (${err.message}).`; }
+      return;
+    }
+    this.rules = rules;
+    this.network = await mountDiscovered({
+      host, status, id: 'switch-discovered', kinds: rules.kinds,
+      empty: 'No switch on the bus yet.',
+      action: { label: 'Load', run: (thing) => this.loadDiscovered(thing) },
+    });
+  }
+
+  loadDiscovered(thing) {
+    const block = switchFromThing(thing, this.rules || {});
+    if (block.portCount > 0) this.model.generateBlankPorts(block.portCount);
+    this.model.fromBlock({ ...block, ports: block.portCount > 0 ? this.model.ports : [] });
+    const tag = document.getElementById('block-tag');
+    if (tag) tag.textContent = `FROM THE NETWORK: ${block.discovered.identity}`;
+    this.render();
+    this.changed();
+  }
+
+  handleBlockLoaded(block) {
+    if (!block) return;
+    this.model.fromBlock(block);
     this.render();
   }
 
-  handleBlockLoaded(block, meta = {}) {
-    if (!block) return;
-    this.model.id = block.id || this.model.id;
-    this.model.name = block.name || this.model.name;
-    this.model.poeBudgetW = block.poeBudgetW || this.model.poeBudgetW;
-    if (Array.isArray(block.ports) && block.ports.length > 0) {
-      this.model.ports = block.ports;
-      this.model.portCount = block.ports.length;
-    }
-    this.render();
+  saveMeta() {
+    return {
+      title: `${this.model.name} (${this.model.portCount} Ports)`,
+      filename: `switch_${String(this.model.name).toLowerCase().replace(/[^a-z0-9]/g, '_')}`,
+    };
   }
 
   saveBlock() {
-    const block = {
-      type: 'network_switch',
-      id: this.model.id,
-      name: this.model.name,
-      portCount: this.model.portCount,
-      poeBudgetW: this.model.poeBudgetW,
-      totalPoeDrawW: this.model.getTotalPoeDraw(),
-      ports: this.model.ports,
-      timestamp: new Date().toISOString(),
-    };
-    this.bridge.saveBlock(block, {
-      title: `${this.model.name} (${this.model.portCount} Ports)`,
-      filename: `switch_${this.model.name.toLowerCase().replace(/[^a-z0-9]/g, '_')}`,
-    });
+    this.host.save(this.model.toBlock(), this.saveMeta());
   }
 
   render() {
@@ -154,85 +164,74 @@ export class SwitchApp {
 
       slot.innerHTML = `
         <div style="display:flex; justify-content:space-between; width:100%; font-size:8px; color:var(--osc-text-muted);">
-          <span>${p.id}</span>
+          <span>${esc(p.id)}</span>
           <span style="color:${p.link ? 'var(--osc-status-success)' : '#444'};">●</span>
         </div>
-        <div style="width:24px; height:16px; margin:4px 0; background:#000; border:1px solid ${profile.color}; border-radius:2px; display:flex; align-items:center; justify-content:center;">
-          <span style="font-size:7px; color:${profile.color}; font-weight:bold;">${p.type === 'SFP+' ? 'SFP' : 'RJ'}</span>
+        <div style="width:24px; height:16px; margin:4px 0; background:#000; border:1px solid ${esc(profile.color)}; border-radius:2px; display:flex; align-items:center; justify-content:center;">
+          <span style="font-size:7px; color:${esc(profile.color)}; font-weight:bold;">${p.type === 'SFP+' ? 'SFP' : 'RJ'}</span>
         </div>
         <div style="font-size:8px; color:${p.poeEnabled ? 'var(--osc-accent-primary)' : 'var(--osc-text-subtle)'};">
-          ${p.poeEnabled ? `${p.poeDrawW}W` : '—'}
+          ${p.poeEnabled ? `${esc(p.poeDrawW)}W` : '—'}
         </div>
       `;
 
       slot.addEventListener('click', () => {
         this.selectedPortId = p.id;
         this.renderVisualGrid();
-        const row = document.getElementById(`port-row-${p.id}`);
-        if (row) row.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        const i = this.model.ports.indexOf(p);
+        if (this.portTable && i >= 0) this.portTable.select(i);
       });
 
       this.portsGrid.appendChild(slot);
     });
   }
 
+  /* The port schedule is an APKTable (vendor/apk-table), reachable by script
+     as APKTable.get('switch-ports'). Rows are the model's own port objects. */
   renderTable() {
-    this.portTableBody.innerHTML = '';
-    this.model.ports.forEach((p, idx) => {
-      const tr = document.createElement('tr');
-      tr.id = `port-row-${p.id}`;
-      if (p.id === this.selectedPortId) {
-        tr.style.background = 'var(--osc-bg-surface-hover)';
-      }
-
-      tr.innerHTML = `
-        <td class="col-idx text-center">${p.id}</td>
-        <td><input type="text" class="cell-input" data-idx="${idx}" data-field="name" value="${p.name}"></td>
-        <td>
-          <select class="cell-input" data-idx="${idx}" data-field="profile">
-            ${AV_PROFILES.map(pr => `<option value="${pr.id}" ${pr.id === p.profile ? 'selected' : ''}>${pr.name}</option>`).join('')}
-          </select>
-        </td>
-        <td><input type="number" class="cell-input text-center" data-idx="${idx}" data-field="vlan" value="${p.vlan}"></td>
-        <td>
-          <select class="cell-input" data-idx="${idx}" data-field="speed">
-            <option value="1G" ${p.speed === '1G' ? 'selected' : ''}>1G Copper</option>
-            <option value="10G" ${p.speed === '10G' ? 'selected' : ''}>10G SFP+</option>
-            <option value="100M" ${p.speed === '100M' ? 'selected' : ''}>100M</option>
-            <option value="Auto" ${p.speed === 'Auto' ? 'selected' : ''}>Auto</option>
-          </select>
-        </td>
-        <td class="text-center">
-          <input type="checkbox" data-idx="${idx}" data-field="poeEnabled" ${p.poeEnabled ? 'checked' : ''}>
-        </td>
-        <td><input type="number" step="0.1" class="cell-input text-center" data-idx="${idx}" data-field="poeDrawW" value="${p.poeDrawW}"></td>
-        <td><input type="text" class="cell-input" data-idx="${idx}" data-field="neighbor" value="${p.neighbor || ''}"></td>
-      `;
-      this.portTableBody.appendChild(tr);
-    });
-
-    this.portTableBody.querySelectorAll('.cell-input, input[type="checkbox"]').forEach(input => {
-      input.addEventListener('change', (e) => {
-        const i = parseInt(e.target.dataset.idx, 10);
-        const f = e.target.dataset.field;
-        if (e.target.type === 'checkbox') {
-          this.model.ports[i][f] = e.target.checked;
-        } else if (f === 'vlan') {
-          this.model.ports[i][f] = parseInt(e.target.value, 10) || 1;
-        } else if (f === 'poeDrawW') {
-          this.model.ports[i][f] = parseFloat(e.target.value) || 0;
-        } else {
-          this.model.ports[i][f] = e.target.value;
-          if (f === 'profile') {
-            const prof = AV_PROFILES.find(pr => pr.id === e.target.value);
-            if (prof) this.model.ports[i].vlan = prof.vlan;
-          }
+    if (!this.portTableHost || !window.APKTable) return;
+    if (this.portTable) { this.portTable.setRows(this.model.ports); return; }
+    this.portTable = window.APKTable.create(this.portTableHost, {
+      id: 'switch-ports',
+      searchPlaceholder: 'Filter ports',
+      empty: 'No ports.',
+      columns: [
+        { key: 'id', label: 'Port #', type: 'number', editable: false },
+        { key: 'name', label: 'Description / Label' },
+        { key: 'profile', label: 'AV Profile / QoS Preset', type: 'select', options: AV_PROFILES.map((pr) => pr.id) },
+        { key: 'vlan', label: 'VLAN', type: 'number' },
+        { key: 'speed', label: 'Speed', type: 'select', options: SPEEDS },
+        { key: 'poeEnabled', label: 'PoE', render: (v, row) => this.poeBox(row) },
+        { key: 'poeDrawW', label: 'PoE Watts', type: 'number' },
+        { key: 'neighbor', label: 'Connected Device / LLDP Neighbor' },
+      ],
+      rows: this.model.ports,
+      onSelect: (i, row) => { if (row && row.id !== this.selectedPortId) { this.selectedPortId = row.id; this.renderVisualGrid(); } },
+      onEdit: (i, key, value, row) => {
+        if (key === 'vlan') row.vlan = parseInt(value, 10) || 1;
+        if (key === 'poeDrawW') row.poeDrawW = parseFloat(value) || 0;
+        if (key === 'profile') {
+          const prof = AV_PROFILES.find((pr) => pr.id === value);
+          if (prof) { row.vlan = prof.vlan; this.portTable.setRows(this.model.ports); }
         }
         this.renderTelemetry();
         this.renderVisualGrid();
-        this.bridge.notifyChanged();
-      });
+        this.changed();
+      },
     });
+  }
+
+  poeBox(row) {
+    const box = document.createElement('input');
+    box.type = 'checkbox';
+    box.checked = !!row.poeEnabled;
+    box.onchange = () => {
+      row.poeEnabled = box.checked;
+      this.renderTelemetry();
+      this.renderVisualGrid();
+      this.changed();
+    };
+    return box;
   }
 
   promptOpen() {
@@ -246,7 +245,8 @@ export class SwitchApp {
       reader.onload = (re) => {
         try {
           const parsed = JSON.parse(re.target.result);
-          this.handleBlockLoaded(parsed, { title: file.name });
+          this.handleBlockLoaded(parsed);
+          this.changed();
         } catch (err) {
           alert('Invalid JSON switch block');
         }
