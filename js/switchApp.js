@@ -3,7 +3,6 @@
 
 import { SwitchModel, AV_PROFILES } from './switchModel.js';
 import { switchFromThing } from './switchDiscovered.js';
-import { mountDiscovered, loadRules } from './discoveredTable.js';
 
 const esc = (s) => window.APKSoftapp.esc(s);
 const SPEEDS = ['1G', '10G', '100M', 'Auto'];
@@ -22,6 +21,26 @@ export class SwitchApp {
       onRequest: () => ({ block: this.model.toBlock(), meta: this.saveMeta() }),
     });
 
+    window.APKSoftapp.describe({
+      name: 'Switch Configurator',
+      does: 'Plans a network switch port by port — label, AV profile / QoS preset, VLAN, speed, PoE and the connected device — and checks the PoE draw against the budget.',
+      inputs: [
+        { name: 'Switch block', from: 'the CAD drawing (network_switch block) when opened from the CAD', kind: 'cad' },
+        { name: 'Block file', from: 'a .json saved by this editor, picked with Open', kind: 'file' },
+        { name: 'Switches on the network', from: 'what the bus has discovered (SNMP bridge, vendor plugins); which kinds show is config/discovery.json', kind: 'bus' },
+      ],
+      outputs: [
+        { name: 'Switch block', to: 'the CAD drawing on Save & Return, or a switch_<name>.json download when standalone', kind: 'file' },
+      ],
+      controls: [
+        { name: 'Switch name / port count / PoE budget', how: 'The fields above the port grid (changing the port count regenerates the ports)' },
+        { name: 'Select a port', how: 'Click it in the front-panel grid or its row in the port table' },
+        { name: 'Edit a port', how: 'Port table: label, AV profile (sets its VLAN), VLAN, speed, PoE on/off, PoE watts, neighbour' },
+        { name: 'Load a discovered switch', how: 'Load on its row in the network table (Discovered button shows / hides it)' },
+        { name: 'Open / Save & Return / Close', how: 'Top-bar buttons' },
+      ],
+      problems: ['file_unreadable', 'bad_json', 'bad_input', 'config_invalid', 'bus_missing', 'device_stale'],
+    });
     this.initElements();
     this.attachEvents();
     this.render();
@@ -84,16 +103,23 @@ export class SwitchApp {
     if (!host) return;
     let rules;
     try {
-      rules = await loadRules(import.meta.url);
+      const cfg = await window.APKSoftapp.discoveredConfig(new URL('../config/discovery.json', import.meta.url), { required: true });
+      if (cfg.problem) throw Object.assign(new Error(cfg.why), { problem: cfg.problem });
+      rules = cfg;
     } catch (err) {
       if (status) { status.setAttribute('data-apk-state', 'dead'); status.textContent = `Could not read config/discovery.json (${err.message}).`; }
+      window.APKSoftapp.showProblem(err.problem || err, {
+        into: status || undefined, subject: 'config/discovery.json', detail: err.message,
+        fix: ['config/discovery.json beside this app says which discovered kinds are switches; it must be served and be valid JSON ({ "kinds": [...] }).'],
+        onRetry: () => this.startDiscovered(),
+      });
       return;
     }
     this.rules = rules;
-    this.network = await mountDiscovered({
-      host, status, id: 'switch-discovered', kinds: rules.kinds,
+    this.network = await window.APKSoftapp.discoveredPanel(host, {
+      status, id: 'switch-discovered', config: rules,
       empty: 'No switch on the bus yet.',
-      action: { label: 'Load', run: (thing) => this.loadDiscovered(thing) },
+      pickLabel: 'Load', onPick: (thing) => this.loadDiscovered(thing),
     });
   }
 
@@ -241,16 +267,30 @@ export class SwitchApp {
     input.onchange = (e) => {
       const file = e.target.files[0];
       if (!file) return;
+      const S = window.APKSoftapp;
+      const again = () => this.promptOpen();
       const reader = new FileReader();
       reader.onload = (re) => {
+        let parsed;
         try {
-          const parsed = JSON.parse(re.target.result);
-          this.handleBlockLoaded(parsed);
-          this.changed();
+          parsed = JSON.parse(re.target.result);
         } catch (err) {
-          alert('Invalid JSON switch block');
+          S.showProblem('bad_json', { subject: file.name, detail: err.message, onRetry: again });
+          return;
         }
+        if (!parsed || typeof parsed !== 'object' || !Array.isArray(parsed.ports)) {
+          S.showProblem('bad_input', {
+            subject: file.name,
+            detail: 'This is not a switch block: it has no "ports" list.',
+            fix: ['Open a .json saved by this editor (Save & Return when standalone downloads one), or Load a switch from the network table.'],
+            onRetry: again,
+          });
+          return;
+        }
+        this.handleBlockLoaded(parsed);
+        this.changed();
       };
+      reader.onerror = () => S.showProblem('file_unreadable', { subject: file.name, detail: reader.error && reader.error.message, onRetry: again });
       reader.readAsText(file);
     };
     input.click();
