@@ -8,9 +8,10 @@
    made up: the ports are plain (no profile, PoE or neighbour), and with no
    port count the editor keeps the ports it has.
 
-   The port count is a leaf (`fields.portCount`) or, where the switch's MIB has
-   a port table, the number of rows the SNMP bridge published under one of its
-   columns (`portRows`, e.g. TEG-240WS configPort: <column>_1 … <column>_24).
+   The port count is a leaf (`fields.portCount`: PLUGIN.SNMP's `port_count`,
+   the rows of the MIB's port table, ROAD-3518). Only when no such leaf is on
+   the bus, an optional fallback counts the rows the SNMP bridge published
+   under a column `portRows` names (<column>_1 … <column>_N).
    MIB-II ifNumber is not used: it counts VLAN and CPU interfaces too, and
    PLUGIN.SNMP walks only the switch MIB's own subtree, so it is not on the bus. */
 

@@ -68,7 +68,7 @@ test('standalone, Save downloads the block once and says download', () => {
   assert.equal(toParent.length, 0);
 });
 
-test('the bench TEG-240WS on the bus becomes a block keyed on its MAC, 24 ports from its port table, nothing invented', () => {
+test('the bench TEG-240WS on the bus becomes a block keyed on its MAC, 24 ports from its port_count leaf, nothing invented', () => {
   const { S, win } = world({ contracts: true });
   if (!win.APKContracts) return;
   const now = Date.parse('2026-11-04T12:00:00Z');
@@ -81,6 +81,7 @@ test('the bench TEG-240WS on the bus becomes a block keyed on its MAC, 24 ports 
   disc.ingest(`${dev}/name`, 'snmp_00_14_d1_1e_a0_5f');
   disc.ingest(`${dev}/notes`, 'answers SNMP at 44.44.44.161');
   disc.ingest(`${dev}/1_3_6_1_4_1_28866_2_11_11_13_0`, '00 14 D1 1E A0 5F ');
+  disc.ingest(`${dev}/port_count`, '24');   // PLUGIN.SNMP: the rows of the MIB's port table (ROAD-3518)
   const port = '1_3_6_1_4_1_28866_2_11_11_6_1';   // configPortTable.configPortEntry
   for (let i = 1; i <= 24; i++) {
     disc.ingest(`${dev}/${port}_1_${i}`, String(i));   // configPort: the row index
@@ -90,7 +91,9 @@ test('the bench TEG-240WS on the bus becomes a block keyed on its MAC, 24 ports 
   const things = disc.things().filter((t) => rules.kinds.some((k) => t.kinds.some((x) => x.includes(k))));
   assert.equal(things.length, 1);
   const t = things[0];
-  assert.equal(tableRows(t, rules.portRows), 24, 'configPort rows, not every table');
+  assert.equal(rules.portRows, undefined, 'the port count is the plugin\'s leaf, no MIB column in this config');
+  assert.deepEqual(rules.fields.portCount, ['port_count']);
+  assert.equal(tableRows(t, [port + '_1']), 24, 'the fallback still counts configPort rows, not every table');
 
   const block = switchFromThing(t, rules);
   assert.equal(block.id, 'sw_00_14_d1_1e_a0_5f', 'identity is the MAC, never the address');

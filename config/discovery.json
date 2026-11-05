@@ -1,6 +1,6 @@
 {
-  "_about": "What the Switch Configurator offers from the bus. Tunables only: no code holds a device list. `kinds` is matched (case-insensitive substring) against each discovered thing's protocols, scanner kind and device_class (APKSoftapp.discovered). `fields` names, in order of preference, the leaf a scanner publishes a value under (empty: nothing on the bench publishes one, see _measured); the SNMP bridge (PLUGIN.SNMP bridge.rs) publishes every OID it walks as a leaf with '_' for '.'. `portRows` names table columns whose rows are the front-panel ports: the port count is the number of distinct rows published under any of them (a leaf <column>_<index>). A switch with none of them keeps the editor's port count.",
-  "_measured": "Bench broker 2026-11-04 (ROAD-3502): one switch, snmp/Device/snmp_00_14_d1_1e_a0_5f (device_class 'Network Switch', model 'TEG-240WS  3.02.03'). PLUGIN.SNMP walks only its MIB's own subtree (rootOid 1.3.6.1.4.1.28866.2.11, mib_file TEG-240WS-MIB), so NO MIB-II leaf is on the bus: sysName 1_3_6_1_2_1_1_5_0, sysDescr 1_3_6_1_2_1_1_1_0, sysLocation 1_3_6_1_2_1_1_6_0 and ifNumber 1_3_6_1_2_1_2_1_0 never appear, and the enterprise MIB has no name, description or location object. Name and model come from the thing itself (its MAC and its runner's model leaf). The port count is the TEG-240WS configPortTable index column configPort (1.3.6.1.4.1.28866.2.11.11.6.1.1): rows 1..24, e.g. …/1_3_6_1_4_1_28866_2_11_11_6_1_1_24 24, = 24 ports (ifNumber would also have counted the VLAN and CPU interfaces). Another switch MIB adds its own port column here. netgear and trendnet plugins are online but publish no Device/ tree on the bench.",
+  "_about": "What the Switch Configurator offers from the bus. Tunables only: no code holds a device list. `kinds` is matched (case-insensitive substring) against each discovered thing's protocols, scanner kind and device_class (APKSoftapp.discovered). `fields` names, in order of preference, the leaf a scanner publishes a value under (empty: nothing on the bench publishes one, see _measured); the SNMP bridge (PLUGIN.SNMP bridge.rs) publishes every OID it walks as a leaf with '_' for '.', and `port_count` beside `_describe`: the rows of the MIB's port table (ROAD-3518). FALLBACK ONLY: an optional `portRows` lists table columns whose rows are the front-panel ports, counted (distinct <column>_<index> leaves) only when no `fields.portCount` leaf is on the bus; it is absent because PLUGIN.SNMP says port_count itself. A switch with neither keeps the editor's port count.",
+  "_measured": "Bench broker 2026-11-04 (ROAD-3502, ROAD-3518): one switch, snmp/Device/snmp_00_14_d1_1e_a0_5f (device_class 'Network Switch', model 'TEG-240WS  3.02.03'). PLUGIN.SNMP walks only its MIB's own subtree (rootOid 1.3.6.1.4.1.28866.2.11, mib_file TEG-240WS-MIB), so NO MIB-II leaf is on the bus: sysName, sysDescr, sysLocation and ifNumber never appear, and the enterprise MIB has no name, description or location object. Name and model come from the thing itself (its MAC and its runner's model leaf). The port count is …/snmp/Device/snmp_00_14_d1_1e_a0_5f/port_count = 24: PLUGIN.SNMP counts the rows of the table its MIB indexes by ifIndex (TEG-240WS configPortTable; ifNumber would also have counted the VLAN and CPU interfaces). netgear and trendnet plugins are online but publish no Device/ tree on the bench.",
   "kinds": [
     "snmp",
     "switch",
@@ -11,10 +11,9 @@
     "name": [],
     "description": [],
     "location": [],
-    "portCount": []
+    "portCount": [
+      "port_count"
+    ]
   },
-  "portRows": [
-    "1_3_6_1_4_1_28866_2_11_11_6_1_1"
-  ],
   "maxPorts": 96
 }
