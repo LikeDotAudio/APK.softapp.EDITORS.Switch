@@ -8,8 +8,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import { world, hostContract, discovery, ORIGIN } from './softappWorld.mjs';
 import { SwitchModel } from '../js/switchModel.js';
-import { switchFromThing, field } from '../js/switchDiscovered.js';
-import { thingRow } from '../js/discoveredTable.js';
+import { switchFromThing, tableRows } from '../js/switchDiscovered.js';
 
 const rules = JSON.parse(fs.readFileSync(new URL('../config/discovery.json', import.meta.url)));
 
@@ -69,39 +68,51 @@ test('standalone, Save downloads the block once and says download', () => {
   assert.equal(toParent.length, 0);
 });
 
-test('an SNMP switch on the bus becomes a block keyed on its MAC, ports plain, nothing invented', () => {
+test('the bench TEG-240WS on the bus becomes a block keyed on its MAC, 24 ports from its port table, nothing invented', () => {
   const { S, win } = world({ contracts: true });
   if (!win.APKContracts) return;
   const now = Date.parse('2026-11-04T12:00:00Z');
   const { model: disc, roots } = discovery(S, win, now);
-  const dev = `${roots.protocols}/snmp/Device/d8_47_32_aa_bb_cc`;
-  disc.ingest(`${dev}/mac`, 'd8:47:32:aa:bb:cc');
-  disc.ingest(`${dev}/1_3_6_1_2_1_1_5_0`, 'AV-CORE-1');
-  disc.ingest(`${dev}/1_3_6_1_2_1_1_1_0`, 'TEG-240WS 24-port');
-  disc.ingest(`${dev}/1_3_6_1_2_1_2_1_0`, '26');
-  disc.ingest(`${dev}/ip`, '10.0.0.2');
+  // what PLUGIN.SNMP published on the bench, 2026-11-04 (ROAD-3502): the runner's leaves and
+  // the TEG-240WS MIB subtree only, no MIB-II (sysName / sysDescr / ifNumber are never walked)
+  const dev = `${roots.protocols}/snmp/Device/snmp_00_14_d1_1e_a0_5f`;
+  disc.ingest(`${dev}/device_class`, 'Network Switch');
+  disc.ingest(`${dev}/model`, 'TEG-240WS                                3.02.03');
+  disc.ingest(`${dev}/name`, 'snmp_00_14_d1_1e_a0_5f');
+  disc.ingest(`${dev}/notes`, 'answers SNMP at 44.44.44.161');
+  disc.ingest(`${dev}/1_3_6_1_4_1_28866_2_11_11_13_0`, '00 14 D1 1E A0 5F ');
+  const port = '1_3_6_1_4_1_28866_2_11_11_6_1';   // configPortTable.configPortEntry
+  for (let i = 1; i <= 24; i++) {
+    disc.ingest(`${dev}/${port}_1_${i}`, String(i));   // configPort: the row index
+    disc.ingest(`${dev}/${port}_3_${i}`, '5');         // configPortOperStatus
+  }
+  disc.ingest(`${dev}/1_3_6_1_4_1_28866_2_11_14_1_1_1_6`, '6');   // a trunk table row: not a port
   const things = disc.things().filter((t) => rules.kinds.some((k) => t.kinds.some((x) => x.includes(k))));
   assert.equal(things.length, 1);
   const t = things[0];
-  assert.equal(field(t, rules.fields.name), 'AV-CORE-1');
+  assert.equal(tableRows(t, rules.portRows), 24, 'configPort rows, not every table');
 
   const block = switchFromThing(t, rules);
-  assert.equal(block.id, 'sw_d8_47_32_aa_bb_cc', 'identity is the MAC, never the address');
-  assert.equal(block.name, 'AV-CORE-1');
-  assert.equal(block.portCount, 26);
-  assert.equal(block.discovered.description, 'TEG-240WS 24-port');
+  assert.equal(block.id, 'sw_00_14_d1_1e_a0_5f', 'identity is the MAC, never the address');
+  assert.equal(block.name, t.name, 'no name leaf on the bus: the thing\'s own name');
+  assert.ok(!/44\.44\./.test(block.name + block.id), 'the address is never the name or the id');
+  assert.equal(block.portCount, 24);
+  assert.match(block.model, /^TEG-240WS/);
+  assert.equal(block.discovered.description, '', 'no sysDescr on the bus: none invented');
 
   const m = new SwitchModel();
   m.generateBlankPorts(block.portCount);
   m.fromBlock({ ...block, ports: m.ports });
-  assert.equal(m.ports.length, 26);
+  assert.equal(m.ports.length, 24);
   assert.ok(m.ports.every((p) => !p.poeEnabled && p.neighbor === '' && p.profile === 'general'));
-  assert.deepEqual(m.toBlock().discovered.identity, 'd8:47:32:aa:bb:cc');
+  assert.deepEqual(m.toBlock().discovered.identity, '00:14:d1:1e:a0:5f');
+});
 
-  const row = thingRow(t);
-  assert.equal(row.identity, 'd8:47:32:aa:bb:cc');
-  assert.ok(['good', 'kinda', 'dead'].includes(row.state));
-  assert.ok(row.why);
+test('a port count leaf wins over the table, and maxPorts caps either', () => {
+  const thing = { id: 'x', mac: '00:00:00:00:00:01', fields: { snmp: { port_count: '200' } } };
+  assert.equal(switchFromThing(thing, { fields: { portCount: ['port_count'] }, portRows: ['c'], maxPorts: 96 }).portCount, 96);
+  const rows = { id: 'y', mac: '00:00:00:00:00:02', fields: { snmp: { c_1: '1', c_2: '2', c_3: '', c_x: '9' } } };
+  assert.equal(switchFromThing(rows, { portRows: ['c'] }).portCount, 2, 'an empty row or a non-index leaf is not a port');
 });
 
 test('no port count on the bus: the block says 0 and the editor keeps its ports', () => {
