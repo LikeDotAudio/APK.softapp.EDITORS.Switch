@@ -184,10 +184,16 @@
       <button class="btn btn-secondary" id="btn-open" title="Open block JSON">
         <span class="btn-icon">📂</span> Open
       </button>
+      <button class="btn btn-secondary" id="btn-from-bench" title="Read each port's VLAN and AV profile from the BIM bench plan (GET /api/bim/bench/systems)">
+        <span class="btn-icon">⇩</span> From bench
+      </button>
+      <button class="btn btn-secondary" id="btn-to-bench" title="Write each port's VLAN membership and AV profile into the BIM bench plan (PUT /api/bim/bench/systems/&lt;id&gt;)">
+        <span class="btn-icon">⇧</span> To bench
+      </button>
       <button class="btn btn-secondary" id="btn-export-ifc" title="Download the site model as IFC4X3 (GET /api/bim/site.ifc): the planned VLANs, the devices and their cables">
         <span class="btn-icon">⬇</span> Export IFC
       </button>
-      <button class="btn btn-primary" id="btn-save" title="Save & Return modified block to caller">
+      <button class="btn btn-primary" id="btn-save" title="Write the ports' VLANs into the bench plan, then Save & Return the block (hardware + bench VLAN ids) to the caller">
         <span class="btn-icon">💾</span> Save & Return
       </button>
       <button class="btn btn-icon" id="btn-close" title="Close Editor">✕</button>
@@ -200,6 +206,13 @@
         <div class="form-group-inline">
           <label for="input-switch-name">Switch Hostname:</label>
           <input type="text" id="input-switch-name" class="input" style="width:160px;" value="CORE-SW01">
+        </div>
+
+        <div class="form-group-inline">
+          <label for="select-bench-unit">Bench unit:</label>
+          <select id="select-bench-unit" class="input" style="width:180px;" title="The BIM bench instance this switch is: its ports are that unit's network terminals, members of the bench VLANs">
+            <option value="">— not on the bench —</option>
+          </select>
         </div>
 
         <div class="form-group-inline">

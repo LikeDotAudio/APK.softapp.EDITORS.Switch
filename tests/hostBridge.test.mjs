@@ -29,7 +29,11 @@ test('block round trip: load from the CAD, edit, request answers blockSave with 
   const sent = new SwitchModel(4, 60);
   sent.name = 'FOH-SW';
   sent.ports[1].vlan = 42;
-  fire({ protocol: 'cad.like.audio/host@1', type: 'load', block: sent.toBlock(), meta: { blockName: 'FOH-SW' } });
+  // an old block (ports carrying their own vlan / profile) loads as it was …
+  const oldBlock = { ...sent.toBlock(), ports: JSON.parse(JSON.stringify(sent.ports)) };
+  delete oldBlock.systems;
+  fire({ protocol: 'cad.like.audio/host@1', type: 'load', block: oldBlock, meta: { blockName: 'FOH-SW' } });
+  assert.equal(model.legacy, true);
   assert.equal(model.name, 'FOH-SW');
   assert.equal(model.ports.length, 4);
   assert.equal(model.ports[1].vlan, 42);
@@ -41,7 +45,10 @@ test('block round trip: load from the CAD, edit, request answers blockSave with 
   assert.equal(save.m.type, 'blockSave');
   assert.equal(save.m.blockType, 'network_switch');
   assert.equal(save.m.block.ports[0].name, 'Stage box A');
-  assert.equal(save.m.block.ports[1].vlan, 42);
+  // … and goes back as hardware: the VLAN is the bench's (ROAD-3582), never a per-port copy
+  assert.equal(save.m.block.ports[1].vlan, undefined);
+  assert.equal(save.m.block.ports[1].profile, undefined);
+  assert.deepEqual(save.m.block.systems, []);
   assert.equal(save.m.meta.blockName, 'FOH-SW', 'the CAD meta comes back');
 
   const contract = await hostContract();

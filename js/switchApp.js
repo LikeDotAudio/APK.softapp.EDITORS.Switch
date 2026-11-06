@@ -5,6 +5,7 @@ import { libraryButton, acceptLibraryDrops, bimFields } from './bimLibrary.js';
 import { SwitchModel, AV_PROFILES } from './switchModel.js';
 import { switchFromThing } from './switchDiscovered.js';
 import { exportSiteIfc } from './siteIfc.js';
+import { loadInstances, loadSystems, savePorts, systemsToPorts, systemIdsFor, findInstance, networkTerminals } from './switchBench.js';
 
 const esc = (s) => window.APKSoftapp.esc(s);
 const SPEEDS = ['1G', '10G', '100M', 'Auto'];
@@ -31,9 +32,11 @@ export class SwitchApp {
         { name: 'Block file', from: 'a .json saved by this editor, picked with Open', kind: 'file' },
         { name: 'Device library', from: 'the BIM library (📚 Library, Ctrl+Shift+L, or a part dragged onto the port grid): the switch model and its ports, kept as bimId and bimRef' },
         { name: 'Switches on the network', from: 'what the bus has discovered (SNMP bridge, vendor plugins); which kinds show is config/discovery.json', kind: 'bus' },
+        { name: 'The bench plan', from: 'DATABASE.server.BIM GET /api/bim/bench (the unit) and /api/bim/bench/systems (its ports\' VLANs and profiles)' },
       ],
       outputs: [
-        { name: 'Switch block', to: 'the CAD drawing on Save & Return, or a switch_<name>.json download when standalone', kind: 'file' },
+        { name: 'Switch block', to: 'the CAD drawing on Save & Return, or a switch_<name>.json download when standalone: the hardware, bench.ref and the bench VLAN ids (no per-port VLAN copy)', kind: 'file' },
+        { name: 'The bench plan', to: 'DATABASE.server.BIM bench VLAN systems on ⇧ To bench / Save: each port a member (a trunk tagged), the VLAN its AV profile and DSCP' },
         { name: 'Site model', to: 'a site.ifc download on Export IFC (GET /api/bim/site.ifc)', kind: 'file' },
       ],
       controls: [
@@ -42,7 +45,9 @@ export class SwitchApp {
         { name: 'Select a port', how: 'Click it in the front-panel grid or its row in the port table' },
         { name: 'Edit a port', how: 'Port table: label, AV profile (sets its VLAN), VLAN, speed, PoE on/off, PoE watts, neighbour' },
         { name: 'Load a discovered switch', how: 'Load on its row in the network table (Discovered button shows / hides it)' },
-        { name: 'Open / Save & Return / Close', how: 'Top-bar buttons' },
+        { name: 'Bench unit', how: 'which BIM bench instance this switch is (its network terminals are the ports)' },
+        { name: '⇩ From bench / ⇧ To bench', how: 'read / write each port\'s VLAN membership and AV profile in the bench plan' },
+        { name: 'Open / Save & Return / Close', how: 'Top-bar buttons (Save writes the VLANs to the bench first)' },
         { name: 'Export IFC', how: 'download the site model (site.ifc) the BIM server builds; the page parses no IFC' },
       ],
       problems: ['file_unreadable', 'bad_json', 'bad_input', 'config_invalid', 'bus_missing', 'device_stale', 'http_not_found', 'http_server_error'],
@@ -90,6 +95,14 @@ export class SwitchApp {
       }
     });
     this.btnClose?.addEventListener('click', () => this.host.close());
+    document.getElementById('btn-from-bench')?.addEventListener('click', () => this.loadPlan());
+    document.getElementById('btn-to-bench')?.addEventListener('click', () => this.toBench());
+    this.selectBench = document.getElementById('select-bench-unit');
+    this.selectBench?.addEventListener('change', (e) => {
+      this.model.benchRef = e.target.value;
+      if (this.model.benchRef) this.loadPlan(); else this.changed();
+    });
+    this.fillBenchUnits();
     this.btnSyncDiscovered?.addEventListener('click', () => document.body.classList.toggle('net-hidden'));
 
     this.inputSwitchName.addEventListener('input', (e) => {
@@ -166,6 +179,71 @@ export class SwitchApp {
     if (!block) return;
     this.model.fromBlock(block);
     this.render();
+    if (!this.model.legacy && (this.model.benchRef || this.model.systems.length)) this.loadPlan();
+  }
+
+  /* THE PORTS' VLANS ARE THE BENCH'S (switchBench.js, ROAD-3582). */
+
+  /** The bench units a switch can be: instances with network terminals. */
+  async fillBenchUnits() {
+    if (!this.selectBench) return;
+    try {
+      this.instances = await loadInstances();
+    } catch (_) {
+      this.instances = [];   // no bench: the select stays "not on the bench"; To bench names the problem
+    }
+    const keep = this.model.benchRef;
+    this.selectBench.length = 1;
+    for (const i of this.instances.filter((x) => networkTerminals(x).length)) {
+      this.selectBench.add(new Option(`${i.ref} · ${i.name || i.part?.name || ''} (${networkTerminals(i).length})`, i.ref));
+    }
+    this.selectBench.value = keep || '';
+  }
+
+  /** This switch's bench instance, found by its ref, its discovered MAC or its part. */
+  async benchInstance() {
+    if (!this.instances?.length) this.instances = await loadInstances();
+    const inst = findInstance(this.instances, { ref: this.model.benchRef, mac: this.model.discovered?.identity, bimId: this.model.bimId });
+    if (inst) {
+      this.model.benchRef = inst.ref;
+      if (this.selectBench) this.selectBench.value = inst.ref;
+    }
+    return inst;
+  }
+
+  /** ⇩ From bench: each port's VLAN and profile as the bench plans them. */
+  async loadPlan() {
+    try {
+      const inst = await this.benchInstance();
+      if (!inst) throw Object.assign(new Error('this switch is not a bench unit yet'), { code: 'bad_input' });
+      const items = await loadSystems();
+      this.model.ports = systemsToPorts(this.model.ports, inst, items, AV_PROFILES);
+      this.model.systems = systemIdsFor(inst.ref, items);
+      this.model.legacy = false;
+      this.render();
+      this.changed();
+      return this.model.ports;
+    } catch (err) {
+      window.APKSoftapp.showProblem(err, { subject: 'the bench plan', fix: ['Pick the Bench unit this switch is; the plan is the BIM bench (DATABASE.server.BIM, /api/bim): check it is running in DockTor.'], onRetry: () => this.loadPlan() });
+      return null;
+    }
+  }
+
+  /** ⇧ To bench: every port a member of its VLAN (a trunk tagged in all), the VLAN its preset's profile. */
+  async toBench() {
+    try {
+      const inst = await this.benchInstance();
+      if (!inst) throw Object.assign(new Error('this switch is not a bench unit yet'), { code: 'bad_input' });
+      const { items, systems } = await savePorts(this.model.ports, inst, AV_PROFILES);
+      this.model.ports = systemsToPorts(this.model.ports, inst, items, AV_PROFILES);
+      this.model.systems = systems;
+      this.model.legacy = false;
+      this.render();
+      return systems;
+    } catch (err) {
+      window.APKSoftapp.showProblem(err, { subject: 'ports on the bench', fix: ['Pick the Bench unit this switch is (its network terminals are the ports); each port a VLAN 1..4094; one profile per VLAN.'], onRetry: () => this.toBench() });
+      return null;
+    }
   }
 
   saveMeta() {
@@ -175,8 +253,12 @@ export class SwitchApp {
     };
   }
 
-  saveBlock() {
-    this.host.save(this.model.toBlock(), this.saveMeta());
+  /** Save & Return: the ports' VLANs go onto the bench first, then the block (hardware + VLAN ids). */
+  async saveBlock() {
+    if (!(await this.toBench())) return null;
+    const block = this.model.toBlock();
+    this.host.save(block, this.saveMeta());
+    return block;
   }
 
   render() {
@@ -209,7 +291,7 @@ export class SwitchApp {
     this.portsGrid.innerHTML = '';
     this.model.ports.forEach(p => {
       const isSelected = p.id === this.selectedPortId;
-      const profile = AV_PROFILES.find(pr => pr.id === p.profile) || AV_PROFILES[0];
+      const profile = AV_PROFILES.find(pr => pr.id === p.profile) || AV_PROFILES.find(pr => pr.id === 'general') || AV_PROFILES[0];
       const slot = document.createElement('div');
       slot.className = `port-bezel ${isSelected ? 'selected' : ''}`;
       slot.style.display = 'flex';
