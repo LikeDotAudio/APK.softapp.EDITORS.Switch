@@ -4,6 +4,7 @@
 import { libraryButton, acceptLibraryDrops, bimFields } from './bimLibrary.js';
 import { SwitchModel, AV_PROFILES } from './switchModel.js';
 import { switchFromThing } from './switchDiscovered.js';
+import { exportSiteIfc } from './siteIfc.js';
 
 const esc = (s) => window.APKSoftapp.esc(s);
 const SPEEDS = ['1G', '10G', '100M', 'Auto'];
@@ -33,6 +34,7 @@ export class SwitchApp {
       ],
       outputs: [
         { name: 'Switch block', to: 'the CAD drawing on Save & Return, or a switch_<name>.json download when standalone', kind: 'file' },
+        { name: 'Site model', to: 'a site.ifc download on Export IFC (GET /api/bim/site.ifc)', kind: 'file' },
       ],
       controls: [
         { name: 'Switch name / port count / PoE budget', how: 'The fields above the port grid (changing the port count regenerates the ports)' },
@@ -41,8 +43,9 @@ export class SwitchApp {
         { name: 'Edit a port', how: 'Port table: label, AV profile (sets its VLAN), VLAN, speed, PoE on/off, PoE watts, neighbour' },
         { name: 'Load a discovered switch', how: 'Load on its row in the network table (Discovered button shows / hides it)' },
         { name: 'Open / Save & Return / Close', how: 'Top-bar buttons' },
+        { name: 'Export IFC', how: 'download the site model (site.ifc) the BIM server builds; the page parses no IFC' },
       ],
-      problems: ['file_unreadable', 'bad_json', 'bad_input', 'config_invalid', 'bus_missing', 'device_stale'],
+      problems: ['file_unreadable', 'bad_json', 'bad_input', 'config_invalid', 'bus_missing', 'device_stale', 'http_not_found', 'http_server_error'],
     });
     this.initElements();
     this.attachEvents();
@@ -75,6 +78,17 @@ export class SwitchApp {
   attachEvents() {
     this.btnOpen?.addEventListener('click', () => this.promptOpen());
     this.btnSave?.addEventListener('click', () => this.saveBlock());
+    document.getElementById('btn-export-ifc')?.addEventListener('click', async () => {
+      try {
+        const text = await exportSiteIfc();
+        const url = URL.createObjectURL(new Blob([text], { type: 'model/step' }));
+        const a = Object.assign(document.createElement('a'), { href: url, download: 'site.ifc' });
+        document.body.appendChild(a); a.click(); a.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
+      } catch (err) {
+        window.APKSoftapp.showProblem(err, { subject: 'site.ifc' });
+      }
+    });
     this.btnClose?.addEventListener('click', () => this.host.close());
     this.btnSyncDiscovered?.addEventListener('click', () => document.body.classList.toggle('net-hidden'));
 
