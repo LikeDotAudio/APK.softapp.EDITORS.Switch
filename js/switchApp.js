@@ -4,7 +4,7 @@
 import { libraryButton, acceptLibraryDrops, bimFields } from './bimLibrary.js';
 import { SwitchModel, AV_PROFILES } from './switchModel.js';
 import { switchFromThing } from './switchDiscovered.js';
-import { exportSiteIfc } from './siteIfc.js';
+import { exportSiteIfc, saveWithSiteTwin } from './siteIfc.js';
 import { loadInstances, loadSystems, savePorts, systemsToPorts, systemIdsFor, findInstance, networkTerminals } from './switchBench.js';
 
 const esc = (s) => window.APKSoftapp.esc(s);
@@ -35,7 +35,7 @@ export class SwitchApp {
         { name: 'The bench plan', from: 'DATABASE.server.BIM GET /api/bim/bench (the unit) and /api/bim/bench/systems (its ports\' VLANs and profiles)' },
       ],
       outputs: [
-        { name: 'Switch block', to: 'the CAD drawing on Save & Return, or a switch_<name>.json download when standalone: the hardware, bench.ref and the bench VLAN ids (no per-port VLAN copy)', kind: 'file' },
+        { name: 'Switch block', to: 'the CAD drawing on Save & Return; standalone, switch_<name>.json beside its .ifc twin, the bench\'s site model (Save Model): the hardware, bench.ref and the bench VLAN ids (no per-port VLAN copy)', kind: 'file' },
         { name: 'The bench plan', to: 'DATABASE.server.BIM bench VLAN systems on ⇧ To bench / Save: each port a member (a trunk tagged), the VLAN its AV profile and DSCP' },
         { name: 'Site model', to: 'a site.ifc download on Export IFC (GET /api/bim/site.ifc)', kind: 'file' },
       ],
@@ -50,7 +50,7 @@ export class SwitchApp {
         { name: 'Open / Save & Return / Close', how: 'Top-bar buttons (Save writes the VLANs to the bench first)' },
         { name: 'Export IFC', how: 'download the site model (site.ifc) the BIM server builds; the page parses no IFC' },
       ],
-      problems: ['file_unreadable', 'bad_json', 'bad_input', 'config_invalid', 'bus_missing', 'device_stale', 'http_not_found', 'http_server_error'],
+      problems: ['file_unreadable', 'bad_json', 'bad_input', 'config_invalid', 'bus_missing', 'device_stale', 'http_not_found', 'http_server_error', 'save_failed'],
     });
     this.initElements();
     this.attachEvents();
@@ -253,11 +253,12 @@ export class SwitchApp {
     };
   }
 
-  /** Save & Return: the ports' VLANs go onto the bench first, then the block (hardware + VLAN ids). */
+  /** Save & Return: the ports' VLANs go onto the bench first, then the block (hardware + VLAN ids); standalone,
+      the block and its .ifc twin, the bench's site model (Save Model). */
   async saveBlock() {
     if (!(await this.toBench())) return null;
     const block = this.model.toBlock();
-    this.host.save(block, this.saveMeta());
+    await saveWithSiteTwin(window.APKSoftapp, this.host, block, this.saveMeta(), { onRetry: () => this.saveBlock() });
     return block;
   }
 
