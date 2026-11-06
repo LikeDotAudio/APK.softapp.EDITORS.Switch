@@ -1,6 +1,7 @@
 // Part of the APK.audio project — http://APK.audio — made by Anthony Kuzub
 // MIT Licence. Free, for everyone, for ever. Full text in LICENSE at the root.
 
+import { libraryButton, acceptLibraryDrops, bimFields } from './bimLibrary.js';
 import { SwitchModel, AV_PROFILES } from './switchModel.js';
 import { switchFromThing } from './switchDiscovered.js';
 
@@ -27,6 +28,7 @@ export class SwitchApp {
       inputs: [
         { name: 'Switch block', from: 'the CAD drawing (network_switch block) when opened from the CAD', kind: 'cad' },
         { name: 'Block file', from: 'a .json saved by this editor, picked with Open', kind: 'file' },
+        { name: 'Device library', from: 'the BIM library (📚 Library, Ctrl+Shift+L, or a part dragged onto the port grid): the switch model and its ports, kept as bimId and bimRef' },
         { name: 'Switches on the network', from: 'what the bus has discovered (SNMP bridge, vendor plugins); which kinds show is config/discovery.json', kind: 'bus' },
       ],
       outputs: [
@@ -34,6 +36,7 @@ export class SwitchApp {
       ],
       controls: [
         { name: 'Switch name / port count / PoE budget', how: 'The fields above the port grid (changing the port count regenerates the ports)' },
+        { name: '📚 Library', how: 'Pick the switch from the BIM library (Ctrl+Shift+L): its model and network ports' },
         { name: 'Select a port', how: 'Click it in the front-panel grid or its row in the port table' },
         { name: 'Edit a port', how: 'Port table: label, AV profile (sets its VLAN), VLAN, speed, PoE on/off, PoE watts, neighbour' },
         { name: 'Load a discovered switch', how: 'Load on its row in the network table (Discovered button shows / hides it)' },
@@ -87,6 +90,18 @@ export class SwitchApp {
       this.render();
       this.changed();
     });
+
+    // 📚 Library (ROAD-3572): the switch is a BIM part, with its BIM reference
+    const usePart = (it) => {
+      this.model.fromPart(it.bim, bimFields(it).bimRef);
+      const tag = document.getElementById('block-tag');
+      if (tag) tag.textContent = `BIM: ${this.model.model}`;
+      this.render();
+      this.changed();
+    };
+    this.inputSwitchName.closest('.form-group-inline')?.after(libraryButton((items) => usePart(items[0]), {
+      className: 'btn btn-secondary btn-sm', title: 'Pick this switch from the BIM library', filter: { category: 'Network' } }));
+    if (this.portsGrid) acceptLibraryDrops(this.portsGrid, usePart);
 
     this.inputPoeBudget.addEventListener('input', (e) => {
       this.model.poeBudgetW = parseFloat(e.target.value) || 370;
@@ -152,6 +167,10 @@ export class SwitchApp {
 
   render() {
     this.inputSwitchName.value = this.model.name;
+    // a part's own port count need not be one of the densities: show it as an option
+    if (![...this.selectPortCount.options].some((o) => Number(o.value) === this.model.portCount)) {
+      this.selectPortCount.add(new Option(`${this.model.portCount} Ports (the part's)`, String(this.model.portCount)));
+    }
     this.selectPortCount.value = this.model.portCount;
     this.inputPoeBudget.value = this.model.poeBudgetW;
     this.renderTelemetry();

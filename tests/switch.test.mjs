@@ -26,3 +26,24 @@ test('AV Profiles Catalog', () => {
   assert.equal(qlan.vlan, 20);
   assert.equal(qlan.dscp, 46);
 });
+
+test('a switch picked from the BIM library takes its model and network ports, and keeps its BIM reference (ROAD-3572)', async () => {
+  const { SwitchModel } = await import('../js/switchModel.js');
+  const m = new SwitchModel(24, 370);
+  const ref = { part: 'cisco/cbs350-24p-4g-na', url: 'http://apk.local:8160/api/bim/parts/cisco/cbs350-24p-4g-na', rev: 'r1' };
+  m.fromPart({ id: 'cisco/cbs350-24p-4g-na', name: 'Cisco CBS350-24P-4G Managed Switch', ports: [
+    { group: 'PoE+ Gigabit Ports 1-24', domain: 'network', count: 24 },
+    { group: 'SFP Uplink Ports 25-28', domain: 'network', count: 4 },
+    { group: 'Console Port', domain: 'control', connector: 'RJ45 serial console', count: 1 },
+    { group: 'AC', domain: 'power', count: 1 }] }, ref);
+  assert.equal(m.model, 'Cisco CBS350-24P-4G Managed Switch');
+  assert.equal(m.portCount, 28, 'the console and mains are not switch ports');
+  assert.equal(m.ports.filter((p) => p.type === 'SFP+').length, 4);
+  const b = m.toBlock();
+  assert.equal(b.bimId, 'cisco/cbs350-24p-4g-na');
+  assert.deepEqual(b.bimRef, ref);
+  const old = new SwitchModel(24, 370);
+  old.fromBlock({ name: 'X', model: 'Typed by hand', ports: [] });
+  assert.equal(old.toBlock().model, 'Typed by hand', 'a saved block from before stays readable');
+  assert.equal(old.toBlock().bimRef, undefined);
+});

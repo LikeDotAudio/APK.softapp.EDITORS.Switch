@@ -55,6 +55,29 @@ export class SwitchModel {
     this.portCount = count;
   }
 
+  /** THE SWITCH IS A BIM PART (ROAD-3572): one picked from the library (📚 Library) gives
+      the model its name and its ports — one per network terminal the part declares (SFP
+      where the part says so) — and the block keeps bimId and bimRef {part, url, rev}.
+      A part that declares no network terminal keeps the current ports. */
+  fromPart(part = {}, bimRef = null) {
+    const net = (part.ports || []).filter((p) => !/console|serial/i.test(`${p.group || ''} ${p.signal || ''}`)) // a management console is not a switch port
+      .filter((p) => p.domain === 'network' || (!p.domain && /RJ-?45|SFP|ethernet|LAN/i.test(`${p.connector || ''} ${p.group || ''}`)));
+    const ports = [];
+    for (const p of net) {
+      const n = Math.max(1, Number(p.count) || 1);
+      const sfp = /SFP/i.test(`${p.connector || ''} ${p.group || ''}`);
+      for (let i = 0; i < n; i++) {
+        const id = ports.length + 1;
+        ports.push({ id, name: (p.labels && p.labels[i]) || `${sfp ? 'SFP' : 'Port'} ${id}`, type: sfp ? 'SFP+' : 'RJ45',
+          profile: 'general', vlan: 1, link: false, speed: 'Auto', poeEnabled: false, poeDrawW: 0, neighbor: '' });
+      }
+    }
+    if (ports.length) { this.ports = ports; this.portCount = ports.length; }
+    this.model = part.name || `${part.manufacturer || ''} ${part.model || ''}`.trim() || part.id || this.model;
+    this.bimId = part.id || '';
+    this.bimRef = bimRef || (part.ref && part.ref.part ? { ...part.ref } : null);
+  }
+
   /** The block the CAD stores (toCad.blockSave). */
   toBlock() {
     const block = {
@@ -68,6 +91,8 @@ export class SwitchModel {
       ports: JSON.parse(JSON.stringify(this.ports)),
     };
     if (this.discovered) block.discovered = { ...this.discovered };
+    if (this.bimId) block.bimId = this.bimId;
+    if (this.bimRef) block.bimRef = { ...this.bimRef };
     return block;
   }
 
@@ -83,6 +108,8 @@ export class SwitchModel {
       this.portCount = block.ports.length;
     }
     this.discovered = block.discovered ? { ...block.discovered } : null;
+    this.bimId = block.bimId || '';
+    this.bimRef = block.bimRef ? { ...block.bimRef } : null;
   }
 
   getTotalPoeDraw() {
